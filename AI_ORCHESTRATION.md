@@ -116,6 +116,33 @@ all three PII types.
   response and the resulting `data/audit-log.json` entry match expectations (redacted plaintext +
   decryptable ciphertext of the original).
 
+## Phase 6 - Docker finalization
+
+- Rebuilt and ran the full stack via `docker compose up --build` against Docker Desktop, then
+  drove real HTTP requests at the containerized service (not just the automated test suite):
+  - A message containing an email, SSN, and credit card number - all three redacted correctly in
+    the live response.
+  - 3 consecutive `x-mock-ai-force-fail: true` requests followed by a 4th normal request with a
+    5000ms simulated delay - the 4th call returned `{"answer":"Service Busy","circuitOpen":true}`
+    in ~226ms, proving the breaker genuinely skips the mock AI call once open rather than merely
+    returning a fast error after still waiting.
+  - Inspected `./data/audit-log.json` on the host (via the compose bind mount) and confirmed every
+    call - including the failed ones - was recorded with an encrypted original message and a
+    plaintext redacted message.
+- No code changes were needed for the sanitizer/breaker/audit-log logic in this phase; this was a
+  verification pass to catch anything that only surfaces under a real containerized run (env var
+  wiring, volume permissions, build context) rather than under the Vitest suite.
+
+## Summary
+
+Every phase of this repository - from the initial scaffold through the sanitizer, circuit
+breaker, encrypted audit log, endpoint wiring, and this Docker verification pass - was built
+through an iterative prompt/response loop with Claude Sonnet 5 inside this GitHub Copilot Chat
+session. Each phase was scoped to a single commit, with unit/integration tests written and run
+before moving to the next phase, and this file was updated alongside the code as the reasoning
+behind each security-relevant decision was made, rather than reconstructed afterward.
+
+
 
 
 
