@@ -1,13 +1,8 @@
-import { CircuitBreaker, CircuitOpenError } from "./circuitBreaker";
+import { CircuitBreaker, CircuitBreakerOptions, CircuitOpenError } from "./circuitBreaker";
 import { callMockAi, MockAiOptions } from "./mockAiClient";
 import { env } from "../config/env";
 
 export const SERVICE_BUSY_MESSAGE = "Service Busy";
-
-export const circuitBreaker = new CircuitBreaker({
-  failureThreshold: env.circuitBreakerFailureThreshold,
-  cooldownMs: env.circuitBreakerCooldownMs,
-});
 
 export interface AiGatewayResult {
   answer: string;
@@ -16,22 +11,33 @@ export interface AiGatewayResult {
 }
 
 /**
- * Routes a message through the mock AI client, guarded by the shared circuit breaker. When the
- * breaker is open, returns the "Service Busy" fallback instantly instead of waiting on the
- * simulated 2s delay. Genuine mock AI call failures (breaker still closed/half-open) propagate
- * to the caller to handle.
+ * Builds an AI gateway: a mock AI client call guarded by its own circuit breaker instance. This
+ * is a factory (rather than a module-level singleton) so each Express app instance - and each
+ * test - gets an independently-stateful breaker.
  */
-export async function getAiResponse(
-  message: string,
-  options?: MockAiOptions
-): Promise<AiGatewayResult> {
-  try {
-    const answer = await circuitBreaker.execute(() => callMockAi(message, options));
-    return { answer, circuitOpen: false };
-  } catch (err) {
-    if (err instanceof CircuitOpenError) {
-      return { answer: SERVICE_BUSY_MESSAGE, circuitOpen: true };
+export function createAiGateway(options?: Partial<CircuitBreakerOptions>) {
+  const breaker = new CircuitBreaker({
+    failureThreshold: options?.failureThreshold ?? env.circuitBreakerFailureThreshold,
+    cooldownMs: options?.cooldownMs ?? env.circuitBreakerCooldownMs,
+  });
+
+  async function getAiResponse(
+    message: string,
+    callOptions?: MockAiOptions
+  ): Promise<AiGatewayResult> {
+    try {
+      const answer = await breaker.execute(() => callMockAi(message, callOptions));
+      return { answer, circuitOpen: false };
+    } catch (err) {
+      if (err instanceof CircuitOpenError) {
+        return { answer: SERVICE_BUSY_MESSAGE, circuitOpen: true };
+      }
+      throw err;
     }
-    throw err;
   }
+
+  return { getAiResponse, breaker };
 }
+
+export type AiGateway = ReturnType<typeof createAiGateway>;
+

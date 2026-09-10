@@ -85,5 +85,37 @@ all three PII types.
 - The original message is only ever persisted in its encrypted form; the redacted message is
   persisted in plaintext, matching the spec exactly.
 
+## Phase 5 - Wiring `POST /secure-inquiry` end-to-end
+
+- **Sanitize-before-send discipline**: the route sends the *sanitized* message to the mock AI
+  client and to the audit log's plaintext field - never the raw message - so no PII leaves the
+  sanitizer boundary. Only the encrypted audit log field ever holds the original text.
+- **Refactored `aiGateway.ts` from a module-level singleton to a `createAiGateway()` factory.**
+  This was a deliberate correction from Phase 3: a singleton circuit breaker shared across every
+  request (and every test) makes it impossible to test breaker-trip behavior in isolation without
+  test-only reset hooks polluting production code. A factory lets `createApp()` build one
+  long-lived breaker per running process (the correct production shape) while each test builds
+  its own via `createApp({ aiGateway: createAiGateway(...) })`.
+- **Full dependency injection over env-var test hacks**: `createApp(options)` accepts an optional
+  `auditLogStore` and `aiGateway`. Integration tests inject a store pointed at a temp file with a
+  fixed test encryption key, instead of mutating `process.env` before imports (which is fragile
+  with ES module hoisting) or reaching into a shared singleton's on-disk file.
+- **Demo/grading headers** (`x-mock-ai-force-fail`, `x-mock-ai-delay-ms`): the exercise explicitly
+  asks to demonstrate breaker orchestration, so these headers let a grader trigger 3 consecutive
+  failures and observe the instant "Service Busy" fallback without waiting on random chance or
+  the real 2s delay. They only affect the mock AI simulation - sanitization and audit logging are
+  identical regardless of these headers, so there is no way to use them to bypass any actual
+  security logic.
+- **Response shape decisions**: `400 VALIDATION_ERROR` for a malformed body, `502 AI_CALL_FAILED`
+  when the mock AI call genuinely fails while the breaker is still closed/half-open, `503` with
+  `{ answer: "Service Busy", circuitOpen: true }` when the breaker is open. The audit log entry is
+  written in both the success and failure paths (an inquiry was still made), only skipped for
+  `400` validation failures since there is no valid inquiry to record.
+- Verified end-to-end manually (not just via the test suite): built the project, ran the compiled
+  server, and posted a real request containing an email and a credit card number - confirmed the
+  response and the resulting `data/audit-log.json` entry match expectations (redacted plaintext +
+  decryptable ciphertext of the original).
+
+
 
 
