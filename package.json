@@ -1,0 +1,31 @@
+{
+  "name": "guardian-integration-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Secure middleware service that sanitizes PII, calls a mock AI service behind a circuit breaker, and writes an encrypted audit log.",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "build": "tsc -p .",
+    "start": "node dist/server.js",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "test:ci": "vitest --run --reporter=verbose"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.10",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.5.3",
+    "vitest": "^2.0.5"
+  },
+  "overrides": {
+    "qs": "^6.16.0"
+  }
+}

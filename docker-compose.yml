@@ -1,0 +1,18 @@
+services:
+  guardian-gateway:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      AUDIT_LOG_ENCRYPTION_KEY: ${AUDIT_LOG_ENCRYPTION_KEY}
+      MOCK_AI_FAILURE_RATE: ${MOCK_AI_FAILURE_RATE:-0}
+      CIRCUIT_BREAKER_FAILURE_THRESHOLD: ${CIRCUIT_BREAKER_FAILURE_THRESHOLD:-3}
+      CIRCUIT_BREAKER_COOLDOWN_MS: ${CIRCUIT_BREAKER_COOLDOWN_MS:-30000}
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
