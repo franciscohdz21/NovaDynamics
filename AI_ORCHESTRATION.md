@@ -67,4 +67,23 @@ all three PII types.
   promise can reject before a rejection handler is attached, producing spurious
   "unhandled rejection" warnings even though the test itself passes.
 
+## Phase 4 - Encrypted audit log
+
+- **`src/services/encryption.ts`**: AES-256-GCM with a random 12-byte IV per call (the recommended
+  nonce size for GCM) and the auth tag stored alongside the ciphertext, so tampering with the
+  stored payload is detectable at decrypt time. The key is passed as an explicit parameter
+  (defaulting to the env var) rather than only read from env internally - this was a deliberate
+  testability choice: tests can pass a fixed key without fighting module-load-time env caching.
+- **`src/services/auditLog.ts`**: `AuditLogStore` appends `{ id, timestamp, userId,
+  encryptedOriginalMessage, redactedMessage }` records to a JSON array file. Two things this
+  needed that a naive "just write the file" version wouldn't handle correctly:
+  - **Concurrent writes**: an in-process promise queue serializes every read-modify-write cycle,
+    so parallel `/secure-inquiry` requests can't race each other and drop entries. Verified with a
+    test that fires 10 concurrent `append()` calls and asserts all 10 land in the file.
+  - **Crash safety**: writes go to a temp file first, then `fs.rename()` into place, so a crash
+    mid-write can't leave a half-written/corrupt JSON file behind.
+- The original message is only ever persisted in its encrypted form; the redacted message is
+  persisted in plaintext, matching the spec exactly.
+
+
 
