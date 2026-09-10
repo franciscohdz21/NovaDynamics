@@ -41,3 +41,30 @@ separators/dashes/spaces, a 15-digit Amex-format card, a Luhn-invalid number sta
 formatted SSN, a bare SSN, a 10-digit phone number staying untouched, and a combined message with
 all three PII types.
 
+## Phase 3 - Mock AI client + Circuit Breaker
+
+- **`src/services/circuitBreaker.ts`**: a generic CLOSED/OPEN/HALF_OPEN breaker (`execute<T>(fn)`)
+  decoupled from the mock AI call itself, so it's independently testable and reusable if a real
+  AI provider replaces the mock later.
+  - Opens after `failureThreshold` *consecutive* failures (resets to 0 on any success).
+  - While OPEN, calls fail instantly with `CircuitOpenError` - the underlying `fn` is never
+    invoked, satisfying the "instantly return... without waiting for the timeout" requirement.
+  - After `cooldownMs`, the next call transitions to HALF_OPEN and allows exactly one trial call
+    through (guarded by an in-flight flag so concurrent requests during the trial don't all hit
+    the flaky dependency); success closes the breaker, failure re-opens it with a fresh cooldown.
+- **`src/services/mockAiClient.ts`**: wraps a `setTimeout`-based 2s delay per the spec. Failures
+  are controllable two ways so the breaker is actually demonstrable rather than relying on random
+  chance: `MOCK_AI_FAILURE_RATE` env var (probabilistic) and a `forceFail` option (deterministic,
+  used directly in tests and available for a demo/manual-trigger path later).
+- **`src/services/aiGateway.ts`**: composes the two - on `CircuitOpenError` it returns the
+  `"Service Busy"` fallback string instead of throwing, which is what the Phase 5 endpoint will
+  surface to the client. Genuine mock AI failures (breaker still closed/half-open) propagate up
+  so the endpoint can decide how to respond to those separately from a fully-open breaker.
+- **Testing approach**: circuit breaker and mock AI client tests use Vitest fake timers so the
+  2s delay and cooldown windows execute instantly and deterministically instead of a real
+  test run taking many seconds. One gotcha worth recording: `expect(promise).rejects...` must be
+  attached to the promise *before* `vi.advanceTimersByTimeAsync()` is awaited, otherwise the
+  promise can reject before a rejection handler is attached, producing spurious
+  "unhandled rejection" warnings even though the test itself passes.
+
+
