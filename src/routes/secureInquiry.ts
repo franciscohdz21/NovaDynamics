@@ -58,7 +58,8 @@ export function createSecureInquiryRouter(deps: SecureInquiryDeps): Router {
       }
 
       res.status(200).json({ answer, redactedMessage });
-    } catch {
+    } catch (err) {
+      console.error("Mock AI call failed for /secure-inquiry:", err);
       await deps.auditLogStore.append({ userId, originalMessage: message, redactedMessage });
       res.status(502).json({
         error: "AI_CALL_FAILED",
